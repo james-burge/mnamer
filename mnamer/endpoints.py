@@ -3,6 +3,7 @@
 import datetime
 from re import match
 from time import sleep
+from urllib.parse import parse_qs, urlparse
 
 from mnamer.exceptions import (
     MnamerException,
@@ -14,6 +15,7 @@ from mnamer.utils import clean_dict, parse_date, request_json
 
 OMDB_PLOT_TYPES = {"short", "long"}
 MAX_RETRIES = 5
+TVDB_V4_BASE = "https://api4.thetvdb.com/v4"
 
 
 def omdb_title(
@@ -202,32 +204,34 @@ def tvdb_login(api_key: str | None) -> str:
     Logs into TVDb using the provided api key.
 
     Note: You can register for a free TVDb key at thetvdb.com/?tab=apiregister
-    Online docs: api.thetvdb.com/swagger#!/Authentication/post_login.
     """
-    url = "https://api.thetvdb.com/login"
     body = {"apikey": api_key}
-    status, content = request_json(url, body=body, cache=False)
-    if status == 401:
+    status, content = tvdb_request_json("/login", body=body, cache=False)
+    data = tvdb_v4_data(content)
+    token = data.get("token") if isinstance(data, dict) else None
+    if status in (401, 403):
         raise MnamerException("invalid api key")
-    elif status != 200 or not content.get("token"):  # pragma: no cover
+    elif status != 200 or not token:  # pragma: no cover
         raise MnamerNetworkException("TVDb down or unavailable?")
-    return content["token"]
+    return token
 
 
 def tvdb_refresh_token(token: str) -> str:
     """
     Refreshes JWT token.
 
-    Online docs: api.thetvdb.com/swagger#!/Authentication/get_refresh_token.
+    Online docs: https://api4.thetvdb.com/v4.
     """
-    url = "https://api.thetvdb.com/refresh_token"
-    headers = {"Authorization": f"Bearer {token}"}
-    status, content = request_json(url, headers=headers, cache=False)
+    status, content = tvdb_request_json("/refresh_token", token=token, cache=False)
+    data = tvdb_v4_data(content)
+    refreshed = data.get("token") if isinstance(data, dict) else None
     if status == 401:
         raise MnamerException("invalid token")
-    elif status != 200 or not content.get("token"):  # pragma: no cover
+    elif status in (404, 405):
+        return token
+    elif status != 200 or not refreshed:  # pragma: no cover
         raise MnamerNetworkException("TVDb down or unavailable?")
-    return content["token"]
+    return refreshed
 
 
 def tvdb_episodes_id(
@@ -239,25 +243,31 @@ def tvdb_episodes_id(
     """
     Returns the full information for a given episode id.
 
-    Online docs: https://api.thetvdb.com/swagger#!/Episodes.
+    Online docs: https://api4.thetvdb.com/v4.
     """
     Language.ensure_valid_for_tvdb(language)
-    url = f"https://api.thetvdb.com/episodes/{id_tvdb}"
-    headers = {"Authorization": f"Bearer {token}"}
-    if language:
-        headers["Accept-Language"] = language.a2
-    status, content = request_json(
-        url, headers=headers, cache=cache is True and language is None
-    )
-    if status == 401:
-        raise MnamerException("invalid token")
-    elif status == 404 or not content.get("data"):
-        raise MnamerNotFoundException
-    elif status != 200:  # pragma: no cover
-        raise MnamerNetworkException("TVDb down or unavailable?")
-    elif content["data"]["id"] == 0:
-        raise MnamerNotFoundException
-    return content
+    _ensure_numeric_id(id_tvdb, "id_tvdb")
+
+    for path in (f"/episodes/{id_tvdb}/extended", f"/episodes/{id_tvdb}"):
+        status, content = tvdb_request_json(
+            path,
+            token=token,
+            language=language,
+            cache=cache,
+        )
+        if status == 401:
+            raise MnamerException("invalid token")
+        if status == 429:
+            raise MnamerNetworkException("TVDb rate limited, try again later")
+        if status == 404:
+            continue
+        if status != 200:
+            raise MnamerNetworkException("TVDb down or unavailable?")
+        payload = _tvdb_normalize_episode_entry(tvdb_v4_data(content))
+        if not payload:
+            raise MnamerNotFoundException
+        return {"data": payload}
+    raise MnamerNotFoundException
 
 
 def tvdb_series_id(
@@ -270,25 +280,31 @@ def tvdb_series_id(
     Returns a series records that contains all information known about a
     particular series id.
 
-    Online docs: api.thetvdb.com/swagger#!/Series/get_series_id.
+    Online docs: https://api4.thetvdb.com/v4.
     """
     Language.ensure_valid_for_tvdb(language)
-    url = f"https://api.thetvdb.com/series/{id_tvdb}"
-    headers = {"Authorization": f"Bearer {token}"}
-    if language:
-        headers["Accept-Language"] = language.a2
-    status, content = request_json(
-        url, headers=headers, cache=cache is True and language is None
-    )
-    if status == 401:
-        raise MnamerException("invalid token")
-    elif status == 404 or not content.get("data"):
-        raise MnamerNotFoundException
-    elif status != 200:  # pragma: no cover
-        raise MnamerNetworkException("TVDb down or unavailable?")
-    elif content["data"]["id"] == 0:
-        raise MnamerNotFoundException
-    return content
+    _ensure_numeric_id(id_tvdb, "id_tvdb")
+
+    for path in (f"/series/{id_tvdb}/extended", f"/series/{id_tvdb}"):
+        status, content = tvdb_request_json(
+            path,
+            token=token,
+            language=language,
+            cache=cache,
+        )
+        if status == 401:
+            raise MnamerException("invalid token")
+        if status == 429:
+            raise MnamerNetworkException("TVDb rate limited, try again later")
+        if status == 404:
+            continue
+        if status != 200:
+            raise MnamerNetworkException("TVDb down or unavailable?")
+        payload = _tvdb_normalize_series_entry(tvdb_v4_data(content))
+        if not payload:
+            raise MnamerNotFoundException
+        return {"data": payload}
+    raise MnamerNotFoundException
 
 
 def tvdb_series_id_episodes(
@@ -301,25 +317,38 @@ def tvdb_series_id_episodes(
     """
     All episodes for a given series.
 
-    Note: Paginated with 100 results per page.
-    Online docs: api.thetvdb.com/swagger#!/Series/get_series_id_episodes.
+    Note: Paginated with up to 100 results per page.
+    Online docs: https://api4.thetvdb.com/v4.
     """
     Language.ensure_valid_for_tvdb(language)
-    url = f"https://api.thetvdb.com/series/{id_tvdb}/episodes"
-    headers = {"Authorization": f"Bearer {token}"}
-    if language:
-        headers["Accept-Language"] = language.a2
-    parameters = {"page": page}
-    status, content = request_json(
-        url, parameters, headers=headers, cache=cache is True and language is None
+    _ensure_numeric_id(id_tvdb, "id_tvdb")
+    if page < 1:
+        raise MnamerException("page must be greater than or equal to 1")
+
+    attempts = [
+        (f"/series/{id_tvdb}/episodes/default", {"page": page}),
+        (f"/series/{id_tvdb}/episodes/official", {"page": page}),
+        (f"/series/{id_tvdb}/episodes", {"page": page}),
+    ]
+    status, content = _tvdb_request_first_available(
+        token=token,
+        language=language,
+        cache=cache,
+        attempts=attempts,
     )
     if status == 401:
         raise MnamerException("invalid token")
-    elif status == 404 or not content.get("data"):
+    if status == 429:
+        raise MnamerNetworkException("TVDb rate limited, try again later")
+    if status == 404:
         raise MnamerNotFoundException
-    elif status != 200:  # pragma: no cover
+    if status != 200:
         raise MnamerNetworkException("TVDb down or unavailable?")
-    return content
+
+    data = _tvdb_normalize_episode_list(tvdb_v4_data(content))
+    if not data:
+        raise MnamerNotFoundException
+    return {"data": data, "links": _tvdb_normalize_links(content.get("links"), page)}
 
 
 def tvdb_series_id_episodes_query(
@@ -334,29 +363,43 @@ def tvdb_series_id_episodes_query(
     """
     Allows the user to query against episodes for the given series.
 
-    Note: Paginated with 100 results per page; omitted imdbId-- when would you
-    ever need to query against both tvdb and imdb series ids?
-    Online docs: api.thetvdb.com/swagger#!/Series/get_series_id_episodes_query.
+    Note: Paginated with up to 100 results per page.
+    Online docs: https://api4.thetvdb.com/v4.
     """
     Language.ensure_valid_for_tvdb(language)
-    url = f"https://api.thetvdb.com/series/{id_tvdb}/episodes/query"
-    headers = {"Authorization": f"Bearer {token}"}
-    if language:
-        headers["Accept-Language"] = language.a2
-    parameters = {"airedSeason": season, "airedEpisode": episode, "page": page}
-    status, content = request_json(
-        url,
-        parameters,
-        headers=headers,
-        cache=cache is True and language is None,
+    _ensure_numeric_id(id_tvdb, "id_tvdb")
+    if page < 1:
+        raise MnamerException("page must be greater than or equal to 1")
+
+    parameters = {"page": page, "season": season, "episodeNumber": episode}
+    attempts = [
+        (f"/series/{id_tvdb}/episodes/default", parameters),
+        (f"/series/{id_tvdb}/episodes/official", parameters),
+        (
+            f"/series/{id_tvdb}/episodes/query",
+            {"page": page, "airedSeason": season, "airedEpisode": episode},
+        ),
+    ]
+
+    status, content = _tvdb_request_first_available(
+        token=token,
+        language=language,
+        cache=cache,
+        attempts=attempts,
     )
     if status == 401:
         raise MnamerException("invalid token")
-    elif status == 404 or not content.get("data"):
+    if status == 429:
+        raise MnamerNetworkException("TVDb rate limited, try again later")
+    if status == 404:
         raise MnamerNotFoundException
-    elif status != 200:  # pragma: no cover
+    if status != 200:
         raise MnamerNetworkException("TVDb down or unavailable?")
-    return content
+
+    data = _tvdb_normalize_episode_list(tvdb_v4_data(content))
+    if not data:
+        raise MnamerNotFoundException
+    return {"data": data, "links": _tvdb_normalize_links(content.get("links"), page)}
 
 
 def tvdb_search_series(
@@ -370,29 +413,218 @@ def tvdb_search_series(
     """
     Allows the user to search for a series based on the following parameters.
 
-    Online docs: https://api.thetvdb.com/swagger#!/Search/get_search_series
-    Note: results a maximum of 100 entries per page, no option for pagination.
+    Online docs: https://api4.thetvdb.com/v4.
     """
     Language.ensure_valid_for_tvdb(language)
-    url = "https://api.thetvdb.com/search/series"
-    parameters = {"name": series, "imdbId": id_imdb, "zap2itId": id_zap2it}
-    headers = {"Authorization": f"Bearer {token}"}
-    if language:
-        headers["Accept-Language"] = language.a2
-    status, content = request_json(
-        url, parameters, headers=headers, cache=cache is True and language is None
-    )
-    if status == 401:
-        raise MnamerException("invalid token")
-    elif status == 405:
+    if not any((series, id_imdb, id_zap2it)):
+        raise MnamerException("one of series, id_imdb, id_zap2it must be specified")
+    if sum(1 for v in (series, id_imdb, id_zap2it) if v) > 1:
         raise MnamerException(
             "series, id_imdb, id_zap2it parameters are mutually exclusive"
         )
-    elif status == 404 or not content.get("data"):
+    if id_imdb and not match(r"tt\d+", id_imdb):
+        raise MnamerException("invalid imdb tt-const value")
+
+    query_value = series or id_imdb or id_zap2it
+    assert query_value
+    attempts = [
+        ("/search", {"q": query_value, "query": query_value, "type": "series"}),
+    ]
+    if id_imdb:
+        attempts.append((f"/search/remoteid/{id_imdb}", None))
+    elif id_zap2it:
+        attempts.append((f"/search/remoteid/{id_zap2it}", None))
+
+    status, content = _tvdb_request_first_available(
+        token=token,
+        language=language,
+        cache=cache,
+        attempts=attempts,
+    )
+    if status == 401:
+        raise MnamerException("invalid token")
+    elif status == 429:
+        raise MnamerNetworkException("TVDb rate limited, try again later")
+    elif status == 404:
         raise MnamerNotFoundException
     elif status != 200:  # pragma: no cover
         raise MnamerNetworkException("TVDb down or unavailable?")
-    return content
+
+    data = tvdb_v4_data(content)
+    if isinstance(data, dict):
+        results = [data]
+    elif isinstance(data, list):
+        results = data
+    else:
+        results = []
+
+    normalized = [_tvdb_normalize_series_entry(entry) for entry in results]
+    normalized = [entry for entry in normalized if entry]
+    if not normalized:
+        raise MnamerNotFoundException
+    return {"data": normalized}
+
+
+def tvdb_request_json(
+    path: str,
+    token: str | None = None,
+    params: dict | None = None,
+    body: dict | None = None,
+    language: Language | None = None,
+    cache: bool = True,
+) -> tuple[int, dict]:
+    """Wrapper for TVDb v4 requests."""
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    if language:
+        headers["Accept-Language"] = language.a2
+    return request_json(
+        f"{TVDB_V4_BASE}{path}",
+        parameters=params,
+        body=body,
+        headers=headers,
+        cache=cache is True and language is None,
+    )
+
+
+def tvdb_v4_data(content: dict) -> dict | list:
+    """Extracts v4 `data` payloads while tolerating malformed responses."""
+    if not isinstance(content, dict):
+        return {}
+    return content.get("data") or {}
+
+
+def _ensure_numeric_id(value: str, parameter_name: str) -> None:
+    if not str(value).isdigit():
+        raise MnamerException(f"invalid {parameter_name}")
+
+
+def _tvdb_request_first_available(
+    token: str,
+    language: Language | None,
+    cache: bool,
+    attempts: list[tuple[str, dict | None]],
+) -> tuple[int, dict]:
+    """
+    Returns the first non-404/405 response from a list of TVDb request attempts.
+    """
+    fallback = (404, {})
+    for path, params in attempts:
+        status, content = tvdb_request_json(
+            path,
+            token=token,
+            params=params,
+            language=language,
+            cache=cache,
+        )
+        if status in (404, 405):
+            fallback = (status, content)
+            continue
+        return status, content
+    return fallback
+
+
+def _tvdb_extract_page(value: int | str | None) -> int | None:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        if value.isdigit():
+            return int(value)
+        parsed = parse_qs(urlparse(value).query)
+        page = parsed.get("page", [None])[0]
+        if page and str(page).isdigit():
+            return int(page)
+    return None
+
+
+def _tvdb_normalize_links(links: dict | None, page: int) -> dict:
+    links = links if isinstance(links, dict) else {}
+    prev_page = _tvdb_extract_page(links.get("prev"))
+    next_page = _tvdb_extract_page(links.get("next"))
+    last_page = _tvdb_extract_page(links.get("last"))
+    if last_page is None and next_page is not None:
+        last_page = max(page, next_page)
+    if last_page is None:
+        last_page = page
+    return {
+        "first": 1,
+        "last": last_page,
+        "next": next_page,
+        "prev": prev_page,
+    }
+
+
+def _tvdb_normalize_series_entry(entry: dict | None) -> dict | None:
+    if not isinstance(entry, dict):
+        return None
+    series_id = _tvdb_extract_numeric_id(
+        entry.get("tvdb_id")
+        or entry.get("tvdbId")
+        or entry.get("id")
+        or entry.get("objectID")
+    )
+    if series_id in (None, ""):
+        return None
+    name = entry.get("seriesName") or entry.get("name")
+    return {
+        "aliases": entry.get("aliases") or [],
+        "banner": entry.get("banner"),
+        "firstAired": entry.get("firstAired") or entry.get("first_air_time"),
+        "id": series_id,
+        "image": entry.get("image"),
+        "network": entry.get("network"),
+        "overview": entry.get("overview"),
+        "poster": entry.get("poster"),
+        "seriesId": series_id,
+        "seriesName": name,
+        "slug": entry.get("slug"),
+        "status": entry.get("status"),
+    }
+
+
+def _tvdb_normalize_episode_entry(entry: dict | None) -> dict | None:
+    if not isinstance(entry, dict):
+        return None
+    episode_id = _tvdb_extract_numeric_id(entry.get("id"))
+    if episode_id in (None, "", 0):
+        return None
+    return {
+        "airedEpisodeNumber": entry.get("airedEpisodeNumber")
+        or entry.get("number")
+        or entry.get("episodeNumber"),
+        "airedSeason": entry.get("airedSeason")
+        or entry.get("seasonNumber")
+        or entry.get("season"),
+        "episodeName": entry.get("episodeName") or entry.get("name"),
+        "firstAired": entry.get("firstAired")
+        or entry.get("aired")
+        or entry.get("airedDate"),
+        "id": episode_id,
+        "overview": entry.get("overview"),
+        "seriesId": entry.get("seriesId") or entry.get("series_id"),
+    }
+
+
+def _tvdb_normalize_episode_list(data: dict | list) -> list[dict]:
+    if isinstance(data, dict):
+        data = data.get("episodes") or [data]
+    if not isinstance(data, list):
+        return []
+    episodes = [_tvdb_normalize_episode_entry(entry) for entry in data]
+    return [entry for entry in episodes if entry]
+
+
+def _tvdb_extract_numeric_id(value: int | str | None) -> int | str | None:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        if value.isdigit():
+            return value
+        parts = value.split("-")
+        if parts and parts[-1].isdigit():
+            return parts[-1]
+    return value
 
 
 def tvmaze_show(
