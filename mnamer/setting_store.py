@@ -328,6 +328,15 @@ class SettingStore:
             help="--test: mocks the renaming and moving of files",
         ).as_dict(),
     )
+    watch: bool = dataclasses.field(
+        default=False,
+        metadata=SettingSpec(
+            action="store_true",
+            flags=["--watch"],
+            group=SettingType.DIRECTIVE,
+            help="--watch: run continuously and process new files from watch_input_directory",
+        ).as_dict(),
+    )
 
     # config-only attributes ---------------------------------------------------
 
@@ -355,6 +364,34 @@ class SettingStore:
         default_factory=lambda: {"&": "and", "@": "at", ";": ","},
         metadata=SettingSpec(group=SettingType.CONFIGURATION).as_dict(),
     )
+    watch_enabled: bool = dataclasses.field(
+        default=False,
+        metadata=SettingSpec(group=SettingType.CONFIGURATION).as_dict(),
+    )
+    watch_input_directory: Path | None = dataclasses.field(
+        default=None,
+        metadata=SettingSpec(group=SettingType.CONFIGURATION).as_dict(),
+    )
+    watch_recursive: bool = dataclasses.field(
+        default=False,
+        metadata=SettingSpec(group=SettingType.CONFIGURATION).as_dict(),
+    )
+    watch_settle_seconds: int = dataclasses.field(
+        default=20,
+        metadata=SettingSpec(group=SettingType.CONFIGURATION).as_dict(),
+    )
+    watch_poll_interval: int = dataclasses.field(
+        default=5,
+        metadata=SettingSpec(group=SettingType.CONFIGURATION).as_dict(),
+    )
+    cleanup_empty_source_dirs: bool = dataclasses.field(
+        default=False,
+        metadata=SettingSpec(group=SettingType.CONFIGURATION).as_dict(),
+    )
+    cleanup_processed_source_dirs: bool = dataclasses.field(
+        default=False,
+        metadata=SettingSpec(group=SettingType.CONFIGURATION).as_dict(),
+    )
 
     @classmethod
     def specifications(cls) -> list[SettingSpec]:
@@ -378,6 +415,7 @@ class SettingStore:
             "movie_api": ProviderType,
             "movie_directory": self._resolve_path,
             "targets": lambda targets: [Path(target) for target in targets],
+            "watch_input_directory": self._resolve_path,
         }
         converter: Callable | None = converter_map.get(key)
         if value is not None and converter:

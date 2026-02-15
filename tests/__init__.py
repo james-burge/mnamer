@@ -36,6 +36,14 @@ DEFAULT_SETTINGS = {
     "test": False,
     "verbose": False,
     "version": False,
+    "watch": False,
+    "watch_enabled": False,
+    "watch_input_directory": None,
+    "watch_poll_interval": 5,
+    "watch_recursive": False,
+    "watch_settle_seconds": 20,
+    "cleanup_empty_source_dirs": False,
+    "cleanup_processed_source_dirs": False,
 }
 
 

@@ -84,9 +84,43 @@ DIRECTIVES:
   --no-cache: disable request cache
   --media={movie,episode}: override media detection
   --test: mocks the renaming and moving of files
+  --watch: run continuously and process new files from watch_input_directory
 ```
 
 Parameters can either by entered as command line arguments or from a config file named `.mnamer-v2.json`.
+
+### Watch Mode
+
+`--watch` runs mnamer continuously. It uses the same parsing/query/rename/move
+pipeline as normal CLI mode, but polls a configured input directory for new
+files.
+
+Example config fields in `.mnamer-v2.json`:
+
+```json
+{
+  "watch_enabled": true,
+  "watch_input_directory": "/mnt/transmission/complete",
+  "watch_recursive": true,
+  "watch_settle_seconds": 20,
+  "watch_poll_interval": 5,
+  "cleanup_empty_source_dirs": false,
+  "cleanup_processed_source_dirs": false,
+  "batch": true,
+  "no_guess": true
+}
+```
+
+Cleanup notes:
+- `cleanup_empty_source_dirs=true`: remove a source directory only if it is empty after successful moves.
+- `cleanup_processed_source_dirs=true`: dangerous mode; only active when `cleanup_empty_source_dirs=true`. If a directory had at least one successfully moved masked file and now has no remaining files matching `mask`, the whole directory is deleted recursively.
+- Directories that never contained processable masked files are left untouched.
+
+Run:
+
+```bash
+mnamer --watch --config-path /path/to/.mnamer-v2.json
+```
 
 ## Contributions
 

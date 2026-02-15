@@ -13,6 +13,7 @@ from mnamer.setting_store import SettingStore
 from mnamer.target import Target
 from mnamer.types import MessageType
 from mnamer.utils import clear_cache, get_filesize, is_subtitle
+from mnamer.watcher import Watcher
 
 
 class Frontend(ABC):
@@ -66,7 +67,7 @@ class Frontend(ABC):
 class Cli(Frontend):
     def __init__(self, settings: SettingStore):
         super().__init__(settings)
-        if not settings.targets:
+        if not settings.targets and not self.watch_mode:
             tty.error(USAGE)
             raise SystemExit(2)
         self.success_count = 0
@@ -75,8 +76,15 @@ class Cli(Frontend):
     def total_count(self):
         return len(self.targets)
 
+    @property
+    def watch_mode(self) -> bool:
+        return self.settings.watch or self.settings.watch_enabled
+
     def launch(self) -> None:
         tty.msg("Starting mnamer", MessageType.HEADING)
+        if self.watch_mode:
+            self._launch_watcher()
+            return
         self._ensure_targets()
         self._process_targets()
         self._report_results()
@@ -89,66 +97,10 @@ class Cli(Frontend):
 
     def _process_targets(self) -> None:
         for target in self.targets:
-            self._announce_file(target)
-            self._list_details(target)
-
-            # find match for target
-            matches = []
             try:
-                matches = target.query()
-            except MnamerNotFoundException:
-                tty.msg("no matches found", MessageType.ALERT)
-            except MnamerNetworkException:
-                tty.msg("network error", MessageType.ALERT)
-            if not matches and self.settings.no_guess:
-                tty.msg("skipping (--no-guess)", MessageType.ALERT)
-                continue
-            try:
-                if self.settings.batch:
-                    match = matches[0] if matches else target.metadata
-                elif not matches:
-                    match = tty.metadata_guess(target.metadata)
-                else:
-                    match = tty.metadata_prompt(matches)
-            except MnamerSkipException:
-                tty.msg("skipping (user request)", MessageType.ALERT)
-                continue
+                self.process_target(target)
             except MnamerAbortException:
-                tty.msg("aborting (user request)", MessageType.ERROR)
                 break
-            target.metadata.update(match)
-
-            if (
-                is_subtitle(target.metadata.container)
-                and not target.metadata.language_sub
-            ):
-                if self.settings.batch:
-                    tty.msg(
-                        "skipping (subtitle language can't be detected)",
-                        MessageType.ALERT,
-                    )
-                    continue
-                try:
-                    target.metadata.language_sub = tty.subtitle_prompt()
-                except MnamerSkipException:
-                    tty.msg("skipping (user request)", MessageType.ALERT)
-                    continue
-                except MnamerAbortException:
-                    tty.msg("aborting (user request)", MessageType.ERROR)
-                    break
-
-            # sanity check move
-            if target.destination == target.source:
-                tty.msg(
-                    "skipping (source and destination paths are the same)",
-                    MessageType.ALERT,
-                )
-                continue
-            if self.settings.no_overwrite and target.destination.exists():
-                tty.msg("skipping (--no-overwrite)", MessageType.ALERT)
-                continue
-
-            self._rename_and_move_file(target)
 
     def _announce_file(self, target: Target):
         media_type = target.metadata.to_media_type().value.title()
@@ -186,6 +138,76 @@ class Cli(Frontend):
         else:
             tty.msg("OK!", MessageType.SUCCESS)
             self.success_count += 1
+
+    def process_target(self, target: Target) -> bool:
+        self._announce_file(target)
+        self._list_details(target)
+
+        # find match for target
+        matches = []
+        try:
+            matches = target.query()
+        except MnamerNotFoundException:
+            tty.msg("no matches found", MessageType.ALERT)
+        except MnamerNetworkException:
+            tty.msg("network error", MessageType.ALERT)
+        if not matches and self.settings.no_guess:
+            tty.msg("skipping (--no-guess)", MessageType.ALERT)
+            return False
+        try:
+            if self.settings.batch:
+                match = matches[0] if matches else target.metadata
+            elif not matches:
+                match = tty.metadata_guess(target.metadata)
+            else:
+                match = tty.metadata_prompt(matches)
+        except MnamerSkipException:
+            tty.msg("skipping (user request)", MessageType.ALERT)
+            return False
+        except MnamerAbortException:
+            tty.msg("aborting (user request)", MessageType.ERROR)
+            raise
+        target.metadata.update(match)
+
+        if is_subtitle(target.metadata.container) and not target.metadata.language_sub:
+            if self.settings.batch:
+                tty.msg(
+                    "skipping (subtitle language can't be detected)",
+                    MessageType.ALERT,
+                )
+                return False
+            try:
+                target.metadata.language_sub = tty.subtitle_prompt()
+            except MnamerSkipException:
+                tty.msg("skipping (user request)", MessageType.ALERT)
+                return False
+            except MnamerAbortException:
+                tty.msg("aborting (user request)", MessageType.ERROR)
+                raise
+
+        # sanity check move
+        if target.destination == target.source:
+            tty.msg(
+                "skipping (source and destination paths are the same)",
+                MessageType.ALERT,
+            )
+            return False
+        if self.settings.no_overwrite and target.destination.exists():
+            tty.msg("skipping (--no-overwrite)", MessageType.ALERT)
+            return False
+
+        self._rename_and_move_file(target)
+        return True
+
+    def _launch_watcher(self) -> None:
+        try:
+            watcher = Watcher(self.settings, self.process_target)
+        except RuntimeError as e:
+            raise MnamerException(str(e)) from e
+        try:
+            watcher.run()
+        except KeyboardInterrupt:
+            tty.msg("watcher stopped", MessageType.ALERT)
 
     def _report_results(self) -> None:
         if self.success_count == 0:

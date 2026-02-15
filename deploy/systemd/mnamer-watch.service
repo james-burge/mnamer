@@ -1,0 +1,17 @@
+[Unit]
+Description=mnamer watch service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mnamer
+Group=mnamer
+WorkingDirectory=/opt/mnamer-src/mnamer
+ExecStart=/opt/mnamer-venv/bin/python -m mnamer --watch --no-style --config-path /etc/mnamer/mnamer-v2.json
+Restart=always
+RestartSec=5
+Environment=XDG_CACHE_HOME=/var/cache/mnamer
+
+[Install]
+WantedBy=multi-user.target
