@@ -1,0 +1,50 @@
+{
+    "api_key_omdb": null,
+    "api_key_tmdb": "YOUR_TMDB_API_KEY",
+    "api_key_tvdb": "YOUR_TVDB_API_KEY",
+    "api_key_tvmaze": null,
+    "batch": true,
+    "episode_api": "tvdb",
+    "episode_directory": "/mnt/media/tv",
+    "episode_format": "{series}/Season {season:02}/{series} - S{season:02}E{episode:02} - {title}.{extension}",
+    "hits": 5,
+    "ignore": [
+        ".*sample.*",
+        "^RARBG.*"
+    ],
+    "language": null,
+    "lower": false,
+    "mask": [
+        ".avi",
+        ".m4v",
+        ".mp4",
+        ".mkv",
+        ".ts",
+        ".wmv",
+        ".srt",
+        ".idx",
+        ".sub"
+    ],
+    "movie_api": "tmdb",
+    "movie_directory": "/mnt/media/movies",
+    "movie_format": "{name} ({year})/{name} ({year}).{extension}",
+    "no_guess": true,
+    "no_overwrite": true,
+    "no_style": false,
+    "recurse": true,
+    "replace_after": {
+        "&": "and",
+        ";": ",",
+        "@": "at"
+    },
+    "replace_before": {},
+    "scene": false,
+    "verbose": false,
+    "watch_enabled": false,
+    "watch_input_directory": "/mnt/media/incoming",
+    "watch_poll_interval": 5,
+    "watch_recursive": true,
+    "watch_settle_seconds": 20,
+    "cleanup_empty_source_dirs": false,
+    "cleanup_processed_source_dirs": false
+}

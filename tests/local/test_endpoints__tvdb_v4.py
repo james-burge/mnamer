@@ -32,21 +32,21 @@ def test_tvdb_search_series__uses_bearer_and_normalizes(monkeypatch):
     def mock_request_json(url, parameters=None, body=None, headers=None, cache=True):
         observed_headers.update(headers or {})
         assert url.endswith("/v4/search")
-        assert parameters["q"] == "The Rookie"
+        assert parameters["q"] == "Series Alpha"
         return 200, {
             "status": "success",
             "data": [
-                {"tvdb_id": 2001, "name": "The Rookie", "overview": "cop show"},
+                {"tvdb_id": 2001, "name": "Series Alpha", "overview": "sample synopsis"},
             ],
         }
 
     monkeypatch.setattr("mnamer.endpoints.request_json", mock_request_json)
 
-    result = tvdb_search_series("token-123", series="The Rookie")
+    result = tvdb_search_series("token-123", series="Series Alpha")
 
     assert observed_headers["Authorization"] == "Bearer token-123"
     assert result["data"][0]["id"] == 2001
-    assert result["data"][0]["seriesName"] == "The Rookie"
+    assert result["data"][0]["seriesName"] == "Series Alpha"
 
 
 def test_tvdb_search_series__normalizes_series_prefixed_ids(monkeypatch):
@@ -55,13 +55,13 @@ def test_tvdb_search_series__normalizes_series_prefixed_ids(monkeypatch):
         return 200, {
             "status": "success",
             "data": [
-                {"id": "series-446831", "name": "MobLand"},
+                {"id": "series-446831", "name": "Series Beta"},
             ],
         }
 
     monkeypatch.setattr("mnamer.endpoints.request_json", mock_request_json)
 
-    result = tvdb_search_series("token-123", series="Mobland")
+    result = tvdb_search_series("token-123", series="Series Beta")
     assert result["data"][0]["id"] == "446831"
     assert result["data"][0]["seriesId"] == "446831"
 
@@ -72,7 +72,7 @@ def test_tvdb_series_id__uses_bearer_header(monkeypatch):
     def mock_request_json(url, parameters=None, body=None, headers=None, cache=True):
         observed_headers.update(headers or {})
         assert url.endswith("/v4/series/73739/extended")
-        return 200, {"data": {"id": 73739, "name": "Lost"}}
+        return 200, {"data": {"id": 73739, "name": "Series Gamma"}}
 
     monkeypatch.setattr("mnamer.endpoints.request_json", mock_request_json)
 
@@ -80,4 +80,4 @@ def test_tvdb_series_id__uses_bearer_header(monkeypatch):
 
     assert observed_headers["Authorization"] == "Bearer token-abc"
     assert result["data"]["id"] == 73739
-    assert result["data"]["seriesName"] == "Lost"
+    assert result["data"]["seriesName"] == "Series Gamma"

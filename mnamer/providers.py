@@ -71,7 +71,7 @@ class Provider(ABC):
 class Omdb(Provider):
     """Queries the OMDb API."""
 
-    api_key: str = environ.get("API_KEY_OMDB", "477a7ebc")
+    api_key: str = environ.get("API_KEY_OMDB", "YOUR_OMDB_API_KEY")
 
     def __init__(self, api_key: str | None = None, cache: bool = True):
         super().__init__(api_key, cache)
@@ -141,7 +141,7 @@ class Omdb(Provider):
 class Tmdb(Provider):
     """Queries the TMDb API."""
 
-    api_key: str = environ.get("API_KEY_TMDB", "db972a607f2760bb19ff8bb34074b4c7")
+    api_key: str = environ.get("API_KEY_TMDB", "YOUR_TMDB_API_KEY")
 
     def __init__(self, api_key: str | None = None, cache: bool = True):
         super().__init__(api_key, cache)
@@ -213,7 +213,7 @@ class Tmdb(Provider):
 class Tvdb(Provider):
     """Queries the TVDb API."""
 
-    api_key: str = environ.get("API_KEY_TVDB", "E69C7A2CEF2F3152")
+    api_key: str = environ.get("API_KEY_TVDB", "YOUR_TVDB_API_KEY")
 
     def __init__(self, api_key: str | None = None, cache: bool = True):
         super().__init__(api_key, cache)

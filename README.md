@@ -1,4 +1,4 @@
-[![PyPI](https://img.shields.io/pypi/v/mnamer.svg?style=for-the-badge)](https://pypi.python.org/pypi/mnamer)
+[![PyPI](https://img.shields.io/pypi/v/mnamer-watch-fork.svg?style=for-the-badge)](https://pypi.python.org/pypi/mnamer-watch-fork)
 [![Tests](https://img.shields.io/github/actions/workflow/status/jkwill87/mnamer/.github/workflows/push.yml?branch=main&style=for-the-badge&label=Tests)](https://github.com/jkwill87/mnamer/actions/workflows/push.yml?query=branch:main)
 [![Coverage](https://img.shields.io/codecov/c/github/jkwill87/mnamer/main.svg?style=for-the-badge)](https://codecov.io/gh/jkwill87/mnamer)
 [![Licence](https://img.shields.io/github/license/jkwill87/mnamer.svg?style=for-the-badge)](https://en.wikipedia.org/wiki/MIT_License)
@@ -10,6 +10,8 @@
 
 mnamer (**m**edia re**namer**) is an intelligent and highly configurable media organization utility. It parses media filenames for metadata, searches the web to fill in the blanks, and then renames and moves them.
 
+This repository is a fork of the original project: https://github.com/jkwill87/mnamer.
+
 Currently it has integration support with [TVDb](https://thetvdb.com) and [TvMaze](https://www.tvmaze.com) for television episodes and [TMDb](https://www.themoviedb.org/) and [OMDb](https://www.omdbapi.com) for movies.
 
 <img src="https://github.com/jkwill87/mnamer/raw/main/assets/screenshot.png" width="750"/>
@@ -20,7 +22,11 @@ Check out the [wiki page](https://github.com/jkwill87/mnamer/wiki) for more deta
 
 💾 [**Installation**](https://github.com/jkwill87/mnamer/wiki/Installation)
 
-`$ uv tool install mnamer` or `$ pip3 install --user mnamer`
+`$ uv tool install mnamer-watch-fork` or `$ pip3 install --user mnamer-watch-fork`
+
+Install from your fork directly:
+
+`$ pip3 install --user git+https://github.com/<your-user>/mnamer.git`
 
 🤖 [**Automation**](https://github.com/jkwill87/mnamer/wiki/Automation)
 
@@ -88,6 +94,9 @@ DIRECTIVES:
 ```
 
 Parameters can either by entered as command line arguments or from a config file named `.mnamer-v2.json`.
+
+Use `.mnamer-v2.example.json` as a template and create your local `.mnamer-v2.json` with real API keys.
+`.mnamer-v2.json` is ignored by git in this fork to prevent accidental secret leaks.
 
 ### Watch Mode
 

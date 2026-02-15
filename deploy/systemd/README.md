@@ -26,6 +26,16 @@ sudo chown -R mnamer:mnamer /var/cache/mnamer
 }
 ```
 
+Optional install methods:
+
+```bash
+# from a published package
+/opt/mnamer-venv/bin/pip install mnamer-watch-fork
+
+# or from your fork directly
+/opt/mnamer-venv/bin/pip install git+https://github.com/<your-user>/mnamer.git
+```
+
 3. Install and enable service:
 
 ```bash

@@ -1,13 +1,13 @@
 [project]
-name = "mnamer"
+name = "mnamer-watch-fork"
 description = "A command-line utility for organizing media files."
 authors = [{ name = "Jessy Williams", email = "jessy@jessywilliams.com" }]
 maintainers = [{ name = "Jessy Williams", email = "jessy@jessywilliams.com" }]
 license = { file = "LICENSE.txt" }
 requires-python = ">=3.12"
 dynamic = ["version"]
-scripts = { mnamer = "mnamer.__main__:main" }
-urls = { repository = "https://github.com/jkwill87/mnamer" }
+scripts = { mnamer = "mnamer.__main__:main", mnamer-fork = "mnamer.__main__:main" }
+urls = { repository = "https://github.com/jkwill87/mnamer", upstream = "https://github.com/jkwill87/mnamer" }
 readme = "README.md"
 dependencies = [
     "appdirs>=1.4.4",

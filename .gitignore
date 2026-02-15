@@ -5,13 +5,16 @@ __pycache__/
 .exrc
 .idea
 .mypy_cache/
+.mnamer-v2.local.json
 .pytest_cache/
 .vimrc
 .vs
 .vscode
 AGENTS.md
+.mnamer-v2.json
 *.egg-info/
 *.json
+!.mnamer-v2.example.json
 *.log
 *.py[cod]
 *$py.class
